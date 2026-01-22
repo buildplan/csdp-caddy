@@ -1,0 +1,43 @@
+name: Check for New Bouncer Release
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest bouncer release tag
+        id: get_tag
+        run: |
+          LATEST_TAG=$(gh api /repos/hslatman/caddy-crowdsec-bouncer/releases/latest --jq .tag_name)
+          echo "LATEST_TAG=${LATEST_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Check if release tag is new by using it as a cache key
+        id: check
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: bouncer-release-${{ steps.get_tag.outputs.LATEST_TAG }}
+
+      - name: Create cache marker if new release
+        if: steps.check.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .cache
+          echo "${{ steps.get_tag.outputs.LATEST_TAG }}" > .cache/bouncer-tag
+
+      - name: Trigger build workflow if new release found
+        if: steps.check.outputs.cache-hit != 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: bouncer-release

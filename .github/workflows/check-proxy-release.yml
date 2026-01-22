@@ -1,0 +1,44 @@
+name: Check for New Proxy Release
+
+on:
+  schedule:
+    - cron: '10 3 * * *' # Runs at 03:10 daily
+  workflow_dispatch:
+
+jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest proxy release tag
+        id: get_tag
+        run: |
+          # The proxy repo uses tags like v2.9.1
+          LATEST_TAG=$(gh api /repos/lucaslorentz/caddy-docker-proxy/releases/latest --jq .tag_name)
+          echo "LATEST_TAG=${LATEST_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Check if release tag is new
+        id: check
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: proxy-release-${{ steps.get_tag.outputs.LATEST_TAG }}
+
+      - name: Create cache marker
+        if: steps.check.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .cache
+          echo "${{ steps.get_tag.outputs.LATEST_TAG }}" > .cache/proxy-tag
+
+      - name: Trigger build workflow
+        if: steps.check.outputs.cache-hit != 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: proxy-release
