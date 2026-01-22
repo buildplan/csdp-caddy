@@ -1,4 +1,4 @@
-kname: Build and Push CSDP-Caddy
+name: Build and Push CSDP-Caddy
 
 on:
   repository_dispatch:
