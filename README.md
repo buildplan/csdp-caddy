@@ -1,72 +1,106 @@
-# cs-caddy [![Built with xcaddy](https://img.shields.io/badge/Built%20with-xcaddy-00ADD8?style=flat&logo=go&logoColor=white)](https://github.com/caddyserver/xcaddy) [![CrowdSec Bouncer](https://img.shields.io/badge/CrowdSec-Bouncer-orange?style=flat&logo=shield&logoColor=white)](https://github.com/hslatman/caddy-crowdsec-bouncer)
+# csdp-caddy
 
-[![Build and Push CS-Caddy](https://github.com/buildplan/cs-caddy/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/buildplan/cs-caddy/actions/workflows/build-and-push.yml)
-[![Check Caddy Release](https://github.com/buildplan/cs-caddy/actions/workflows/check-caddy-release.yml/badge.svg)](https://github.com/buildplan/cs-caddy/actions/workflows/check-caddy-release.yml)
-[![Check Bouncer Release](https://github.com/buildplan/cs-caddy/actions/workflows/check-bouncer-release.yml/badge.svg)](https://github.com/buildplan/cs-caddy/actions/workflows/check-bouncer-release.yml)
+[![Built with xcaddy](https://img.shields.io/badge/Built%20with-xcaddy-00ADD8?style=flat&logo=go&logoColor=white)](https://github.com/caddyserver/xcaddy) 
+[![CrowdSec Bouncer](https://img.shields.io/badge/CrowdSec-Bouncer-orange?style=flat&logo=shield&logoColor=white)](https://github.com/hslatman/caddy-crowdsec-bouncer)
+[![Docker Proxy](https://img.shields.io/badge/Docker-Proxy-blue?style=flat&logo=docker&logoColor=white)](https://github.com/lucaslorentz/caddy-docker-proxy)
 
+[![Build and Push CSDP-Caddy](https://github.com/buildplan/csdp-caddy/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/buildplan/csdp-caddy/actions/workflows/build-and-push.yml)
+[![Check Caddy Release](https://github.com/buildplan/csdp-caddy/actions/workflows/check-caddy-release.yml/badge.svg)](https://github.com/buildplan/csdp-caddy/actions/workflows/check-caddy-release.yml)
+[![Check Bouncer Release](https://github.com/buildplan/csdp-caddy/actions/workflows/check-bouncer-release.yml/badge.svg)](https://github.com/buildplan/csdp-caddy/actions/workflows/check-bouncer-release.yml)
+[![Check Proxy Release](https://github.com/buildplan/csdp-caddy/actions/workflows/check-proxy-release.yml/badge.svg)](https://github.com/buildplan/csdp-caddy/actions/workflows/check-proxy-release.yml)
 
-A custom Docker image for the Caddy web server that includes the CrowdSec bouncer for IP blocking and a Web Application Firewall (WAF).
+A custom Docker image for Caddy that combines **Dynamic Docker Configuration** with **CrowdSec Security**.
 
-This makes it easy to add two layers of security directly into your web server. It's based on the excellent [caddy-crowdsec-bouncer](https://github.com/hslatman/caddy-crowdsec-bouncer) by hslatman.
+This image integrates three components into one binary:
+1. **Caddy:** The ultimate server.
+2. **Caddy Docker Proxy:** Auto-generates Caddy configuration from Docker labels (no manual Caddyfile editing).
+3. **CrowdSec Bouncer:** Adds IP blocking and a Web Application Firewall (WAF) to every site you host.
 
-The image is automatically rebuilt and updated on GHCR whenever there is a new release of Caddy, so there'll always be latest version whenever caddy or caddy-crowdsec-bouncer has an update.
+The image is automatically rebuilt and updated on GHCR whenever there is a new release of Caddy, the CrowdSec module, or the Docker Proxy plugin.
 
 ## How It Works
 
-This setup gives two types of protection:
+This setup provides a fully automated, secure reverse proxy stack:
 
-1.  **IP Blocker (`crowdsec`):** Acts like a front-desk security guard. It checks the IP address of every visitor against CrowdSec's blocklist and denies entry to known troublemakers.
-2.  **Web Application Firewall / WAF (`appsec`):** Acts like a security team inside the building. It inspects the *actions* of every visitor, blocking malicious requests like SQL injection, path traversal, and attempts to exploit known software vulnerabilities (CVEs).
+1.  **Dynamic Config (`caddy-docker-proxy`):** Caddy connects to the Docker socket. When you launch a new container with specific labels, Caddy automatically provisions SSL certificates and routes traffic to it.
+2.  **IP Blocker (`crowdsec`):** Acts like a front-desk security guard. It checks the IP of every visitor against CrowdSec's blocklist before allowing access.
+3.  **WAF (`appsec`):** Acts like a security team inside the building. It inspects the *content* of requests to block SQL injection, XSS, and known CVE exploits.
 
 ## How to Use This Image
 
-Follow these steps to integrate this Caddy image into your own Docker-based setup.
+Follow these steps to integrate this Caddy image into your Docker setup.
 
-### Step 1: Use the Custom Image in Docker Compose
+### Step 1: Deploy Caddy and CrowdSec
 
-In your `docker-compose.yml` file, use the image `ghcr.io/buildplan/cs-caddy:latest` for your Caddy service. Make sure Caddy is on the same Docker network as your CrowdSec container.
+In your `docker-compose.yml`, use the image `ghcr.io/buildplan/csdp-caddy:latest`. 
+
+**Note on Configuration:** You do **not** need to mount a `Caddyfile`. We configure the global CrowdSec settings (like the API key) using labels on the Caddy container itself.
 
 ```yaml
-# docker-compose.yml
-
 services:
   caddy:
-    # Use the custom image from this repository
-    image: ghcr.io/buildplan/cs-caddy:latest
-    pull_policy: always # Recommended to get updates
+    image: ghcr.io/buildplan/csdp-caddy:latest
+    container_name: caddy
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      # Required: Tells Caddy which network to proxy traffic through
+      - CADDY_INGRESS_NETWORKS=caddy_net
     networks:
-      - your-network-name # Must be the same network as CrowdSec
+      - caddy_net
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./caddy_logs:/var/log/caddy # For Caddy's own logs
-      # ... other volumes ...
+      - /var/run/docker.sock:/var/run/docker.sock # REQUIRED for auto-discovery
+      - caddy_data:/data
+      # Mount a volume for logs so CrowdSec can read them
+      - ./caddy_logs:/var/log/caddy 
+    
+    # GLOBAL CONFIGURATION VIA LABELS
+    # These labels inject configuration into the global block of the in-memory Caddyfile
+    labels:
+      caddy.email: "you@example.com"
+      # This creates the global { crowdsec { ... } } block
+      caddy.crowdsec.api_url: "http://crowdsec:8080"
+      caddy.crowdsec.api_key: "YOUR_BOUNCER_KEY_HERE" # See Step 2
+      caddy.crowdsec.appsec_url: "http://crowdsec:7422" 
 
   crowdsec:
-    # ... your crowdsec service definition ...
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    environment:
+      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules
     networks:
-      - your-network-name
+      - caddy_net
+    volumes:
+      - ./crowdsec-db:/var/lib/crowdsec/data
+      - ./crowdsec-config:/etc/crowdsec
+      # CrowdSec needs to see Caddy's logs to detect attacks
+      - ./caddy_logs:/var/log/caddy
 
-# ... other services and network definitions ...
+networks:
+  caddy_net:
+    external: true
+
+volumes:
+  caddy_data:
+  crowdsec-db:
 ```
 
-> Make sure to create required directories and an empty log file like:
+### Step 2: Get a Bouncer API Key
+
+Your Caddy bouncer needs a key to talk to the CrowdSec agent.
+Run this command on your server:
 
 ```bash
-mkdir -p ./caddy/logs
-touch ./caddy/logs/access.log
-chmod 666 ./caddy/logs/access.log
+docker exec crowdsec cscli bouncers add caddy-bouncer
 ```
 
-Step 2: Get a Bouncer API KeyYour Caddy bouncer needs a key to talk to the CrowdSec agent. Generate one by running:  
-`docker compose exec crowdsec cscli bouncers add caddy-bouncer`
+Copy the API key generated and paste it into the `caddy.crowdsec.api_key` label in your `docker-compose.yml` (Step 1).
 
-Copy the API key that it gives you.
+### Step 3: Enable AppSec in CrowdSec
 
-Step 3: Enable AppSec in CrowdSecFor the WAF to work, you need to tell your CrowdSec agent to enable the AppSec component.Install the AppSec rule collections:
+For the WAF to work, you need to tell your CrowdSec agent to enable the AppSec component.Install the AppSec rule collections:
 
 ```bash
 docker exec crowdsec cscli collections install crowdsecurity/appsec-virtual-patching
@@ -85,54 +119,86 @@ labels:
   type: appsec
 ```
 
-Step 4: Configure Your CaddyfileNow, edit your Caddyfile to use the bouncer.Add the main crowdsec configuration to your global options block at the top.Add the crowdsec and appsec directives inside a route block for every site you want to protect.Here is an example:
-
-```Caddyfile
-# Caddyfile
-
-# --- Global Options ---
-{
-    # Define logging once, globally.
-	log {
-		output file /var/log/caddy/access.log {
-			roll_size 10mb
-			roll_keep 5
-		}
-		format json
-		level INFO
-	}
-
-	# --- CrowdSec Configuration ---
-	crowdsec {
-		api_url http://crowdsec:8080
-		api_key <your_crowdsec_api_key_goes_here>
-		appsec_url http://crowdsec:7422
-	}
-}
-
-# --- Example Site ---
-your-domain.com {
-    # Use a route block to control the order of directives
-	route {
-        # Security directives should come first
-		crowdsec
-		appsec
-
-        # Your other directives, like reverse_proxy
-		reverse_proxy your-app-container:8000
-	}
-}
+2. **Restart CrowdSec:**
+```bash
+docker restart crowdsec
 ```
 
-Step 5: Restart and VerifyYou're all set. Restart your entire stack to apply all the changes:docker compose up -d --force-recreate
-To check that everything is working, run docker compose exec crowdsec cscli metrics. You should see a table named "Appsec Metrics", which confirms the WAF is active and processing requests.Included UtilitiesWhen Caddy is built with this module, a new caddy crowdsec command is available. This is useful for checking the status of your integration directly.$ docker compose exec caddy caddy crowdsec
+### Step 4: Deploy a Protected Container
+
+With `caddy-docker-proxy`, you add labels to the containers you want to expose.
+
+Here is an example `whoami` service protected by CrowdSec and AppSec:
+
+```yaml
+services:
+  whoami:
+    image: traefik/whoami
+    networks:
+      - caddy_net
+    labels:
+      # 1. Define the domain
+      caddy: "whoami.example.com"
+      
+      # 2. Enable CrowdSec (IP Blocking) & AppSec (WAF)
+      # We use 'route' to ensure security checks happen BEFORE the proxy.
+      # The numbers (0_, 1_) force the order of execution.
+      caddy.route.0_crowdsec: "" 
+      caddy.route.1_appsec: ""
+      
+      # 3. Define the Reverse Proxy
+      # 'upstreams' is a helper function that automatically finds the container IP
+      caddy.route.2_reverse_proxy: "{{upstreams 80}}"
+```
+
+**Explanation of Labels:**
+
+* `caddy`: Sets the URL for this container.
+* `caddy.route.0_crowdsec`: Initializes the IP blocker as the first step.
+* `caddy.route.1_appsec`: Initializes the WAF as the second step.
+* `caddy.route.2_reverse_proxy`: Sends the traffic to the container application.
+
+### Step 5: Verify
+
+1. **Start the stack:**
+```bash
+docker compose up -d
+```
+
+
+2. **Check Caddy Logs:**
+Ensure Caddy connected to the Docker socket and generated the config.
+```bash
+docker logs caddy
+```
+
+
+3. **Check CrowdSec Metrics:**
+Verify that AppSec is receiving data.
+```bash
+docker exec crowdsec cscli metrics
+```
+
+
+You should see an "Appsec Metrics" table.
+
+## Included Utilities
+
+Because this image is built with the CrowdSec module, you have access to the Caddy-CrowdSec CLI tools directly inside the container.
 
 ```bash
-# Example: check if an IP is banned
-$ docker compose exec caddy caddy crowdsec check 1.2.3.4
+# Check if an IP is currently banned
+docker exec caddy caddy crowdsec check 1.2.3.4
 ```
 
 ```bash
+# Check the health of the bouncer connection
+docker exec caddy caddy crowdsec health
+```
+
+### CLI Options
+
+```text
 # options below are taken from https://github.com/hslatman/caddy-crowdsec-bouncer
 $ docker exec caddy crowdsec ...
 
@@ -159,3 +225,5 @@ Use "caddy crowdsec [command] --help" for more information about a command.
 Full documentation is available at:
 https://caddyserver.com/docs/command-line
 ```
+
+For documentation on **Docker Proxy labels**, visit: [caddy-docker-proxy Docs](https://github.com/lucaslorentz/caddy-docker-proxy)
