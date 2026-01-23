@@ -324,40 +324,21 @@ Usage of docker-proxy:
         Scan stopped containers and use their labels for Caddyfile generation (default false)
 ```
 
-This plugin extends caddy's CLI with the command `caddy docker-proxy`.
+Those flags can also be set via environment variables:
 
-Run `caddy help docker-proxy` to see all available flags.
-
-```text
-Usage of docker-proxy:
-  --caddyfile-path string
-        Path to a base Caddyfile that will be extended with Docker sites
-  --envfile
-        Path to an environment file with environment variables in the KEY=VALUE format to load into the Caddy process
-  --controller-network string
-        Network allowed to configure Caddy server in CIDR notation. Ex: 10.200.200.0/24
-  --ingress-networks string
-        Comma separated name of ingress networks connecting Caddy servers to containers.
-        When not defined, networks attached to controller container are considered ingress networks
-  --docker-sockets
-        Comma separated docker sockets
-        When not defined, DOCKER_HOST (or default docker socket if DOCKER_HOST not defined)
-  --docker-certs-path
-        Comma separated cert path, you could use empty value when no cert path for the concern index docker socket like cert_path0,,cert_path2
-  --docker-apis-version
-        Comma separated apis version, you could use empty value when no api version for the concern index docker socket like cert_path0,,cert_path2
-  --label-prefix string
-        Prefix for Docker labels (default "caddy")
-  --mode
-        Which mode this instance should run: standalone | controller | server
-  --polling-interval duration
-        Interval Caddy should manually check Docker for a new Caddyfile (default 30s)
-  --event-throttle-interval duration
-        Interval to throttle caddyfile updates triggered by docker events (default 100ms)
-  --process-caddyfile
-        Process Caddyfile before loading it, removing invalid servers (default true)
-  --proxy-service-tasks
-        Proxy to service tasks instead of service load balancer (default true)
-  --scan-stopped-containers
-        Scan stopped containers and use their labels for Caddyfile generation (default false)
+```yaml
+CADDY_DOCKER_CADDYFILE_PATH=<string>
+CADDY_DOCKER_ENVFILE=<string>
+CADDY_CONTROLLER_NETWORK=<string>
+CADDY_INGRESS_NETWORKS=<string>
+CADDY_DOCKER_SOCKETS=<string>
+CADDY_DOCKER_CERTS_PATH=<string>
+CADDY_DOCKER_APIS_VERSION=<string>
+CADDY_DOCKER_LABEL_PREFIX=<string>
+CADDY_DOCKER_MODE=<string>
+CADDY_DOCKER_POLLING_INTERVAL=<duration>
+CADDY_DOCKER_PROCESS_CADDYFILE=<bool>
+CADDY_DOCKER_PROXY_SERVICE_TASKS=<bool>
+CADDY_DOCKER_SCAN_STOPPED_CONTAINERS=<bool>
+CADDY_DOCKER_NO_SCOPE=<bool, default scope used>
 ```
