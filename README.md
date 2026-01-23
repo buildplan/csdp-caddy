@@ -34,7 +34,7 @@ Follow these steps to integrate this Caddy image into your Docker setup.
 
 In your `docker-compose.yml`, use the image `ghcr.io/buildplan/csdp-caddy:latest`. 
 
-**Note on Configuration:** You do **not** need to mount a `Caddyfile`. We configure the global CrowdSec settings (like the API key) using labels on the Caddy container itself.
+> **Note on Configuration:** You must mount the Docker socket so the proxy can detect your containers. You also need a shared volume for logs so CrowdSec can read Caddy's access logs. You do **not** need to mount a `Caddyfile`. We configure the global CrowdSec settings (like the API key) using labels on the Caddy container itself.
 
 ```yaml
 services:
@@ -57,12 +57,19 @@ services:
       - ./caddy_logs:/var/log/caddy 
     
     # GLOBAL CONFIGURATION VIA LABELS
-    # These labels inject configuration into the global block of the in-memory Caddyfile
     labels:
       caddy.email: "you@example.com"
+      
+      # 1. Global Logging Configuration
+      # We tell Caddy to write logs to a file that CrowdSec can see
+      caddy.log.output: "file /var/log/caddy/access.log"
+      caddy.log.format: "json"
+      caddy.log.level: "INFO"
+      
+      # 2. CrowdSec Configuration
       # This creates the global { crowdsec { ... } } block
       caddy.crowdsec.api_url: "http://crowdsec:8080"
-      caddy.crowdsec.api_key: "YOUR_BOUNCER_KEY_HERE" # See Step 2
+      caddy.crowdsec.api_key: "YOUR_BOUNCER_KEY_HERE" # See Step 3
       caddy.crowdsec.appsec_url: "http://crowdsec:7422" 
 
   crowdsec:
@@ -70,12 +77,16 @@ services:
     container_name: crowdsec
     environment:
       - COLLECTIONS=crowdsecurity/caddy crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules
+      # Listen on all interfaces so Caddy can reach it
+      - CROWDSEC_LAPI_LISTEN_URI=0.0.0.0:8080
     networks:
       - caddy_net
     volumes:
       - ./crowdsec-db:/var/lib/crowdsec/data
       - ./crowdsec-config:/etc/crowdsec
-      # CrowdSec needs to see Caddy's logs to detect attacks
+      # Mount the custom acquisition file (Created in Step 2)
+      - ./crowdsec-config/acquis.yaml:/etc/crowdsec/acquis.yaml
+      # Shared logs volume
       - ./caddy_logs:/var/log/caddy
 
 networks:
@@ -87,10 +98,32 @@ volumes:
   crowdsec-db:
 ```
 
-### Step 2: Get a Bouncer API Key
+### Step 2: Configure CrowdSec Log Reading
+
+You need to tell CrowdSec to read the file that Caddy is writing to.
+
+Create a file named `acquis.yaml` inside your `./crowdsec-config/` directory:
+
+```yaml
+# ./crowdsec-config/acquis.yaml
+filenames:
+  - /var/log/caddy/access.log
+labels:
+  type: caddy
+```
+
+*Note: You also need to create the log file on the host initially to ensure permissions are correct:*
+
+```bash
+mkdir -p caddy_logs
+touch caddy_logs/access.log
+chmod 666 caddy_logs/access.log
+```
+
+### Step 3: Get a Bouncer API Key
 
 Your Caddy bouncer needs a key to talk to the CrowdSec agent.
-Run this command on your server:
+Start the CrowdSec container, then run:
 
 ```bash
 docker exec crowdsec cscli bouncers add caddy-bouncer
@@ -98,19 +131,14 @@ docker exec crowdsec cscli bouncers add caddy-bouncer
 
 Copy the API key generated and paste it into the `caddy.crowdsec.api_key` label in your `docker-compose.yml` (Step 1).
 
-### Step 3: Enable AppSec in CrowdSec
+### Step 4: Enable AppSec in CrowdSec
 
-For the WAF to work, you need to tell your CrowdSec agent to enable the AppSec component.Install the AppSec rule collections:
+To use the WAF features, enable the AppSec engine in CrowdSec.
 
-```bash
-docker exec crowdsec cscli collections install crowdsecurity/appsec-virtual-patching
-docker exec crowdsec cscli collections install crowdsecurity/appsec-generic-rules
-docker exec crowdsec cscli parsers install crowdsecurity/caddy-logs
-docker exec crowdsec cscli collections install crowdsecurity/caddy
-```
-Create an AppSec acquisition file: This file tells CrowdSec to activate the AppSec engine. Create a file named appsec.yaml inside the local directory that you mount to /etc/crowdsec in your container. For example, if you mount ./crowdsec/config:/etc/crowdsec, then create the file at `./crowdsec/config/acquis.d/appsec.yaml`:
+1. **Create the AppSec config:** Inside your mounted CrowdSec config folder (e.g., `./crowdsec-config/acquis.d/`), create a file named `appsec.yaml`:
 
-```bash
+```yaml
+# ./crowdsec-config/acquis.d/appsec.yaml
 listen_addr: 0.0.0.0:7422
 appsec_config: crowdsecurity/appsec-default
 name: caddy-appsec-listener
@@ -124,9 +152,11 @@ labels:
 docker restart crowdsec
 ```
 
-### Step 4: Deploy a Protected Container
+### Step 5: Deploy a Protected Container
 
 With `caddy-docker-proxy`, you add labels to the containers you want to expose.
+
+**Crucial:** We explicitly configure logging labels (`caddy.log.output`) to ensure traffic logs go to the shared volume where CrowdSec can see them.
 
 Here is an example `whoami` service protected by CrowdSec and AppSec:
 
@@ -139,48 +169,63 @@ services:
     labels:
       # 1. Define the domain
       caddy: "whoami.example.com"
-      
-      # 2. Enable CrowdSec (IP Blocking) & AppSec (WAF)
-      # We use 'route' to ensure security checks happen BEFORE the proxy.
-      # The numbers (0_, 1_) force the order of execution.
-      caddy.route.0_crowdsec: "" 
+
+      # 2. LOGGING
+      # Explicitly write logs to the shared volume
+      caddy.log.output: "file /var/log/caddy/access.log"
+      caddy.log.format: "json"
+
+      # 3. SECURITY
+      # We use numbered routes to ensure CrowdSec checks happen BEFORE the proxy
+      caddy.route.0_crowdsec: ""
       caddy.route.1_appsec: ""
       
-      # 3. Define the Reverse Proxy
-      # 'upstreams' is a helper function that automatically finds the container IP
+      # 4. SECURITY HEADERS (Optional)
+      caddy.header.Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+      caddy.header.X-Frame-Options: "SAMEORIGIN"
+      caddy.header.X-Content-Type-Options: "nosniff"
+
+      # 5. REVERSE PROXY
       caddy.route.2_reverse_proxy: "{{upstreams 80}}"
+      
+      # Network Helper (Must match the network defined in Step 1)
+      caddy_ingress_network: "caddy_net"
 ```
 
 **Explanation of Labels:**
 
 * `caddy`: Sets the URL for this container.
+* `caddy.log.output`: configures the site to write logs to the shared `access.log` file.
 * `caddy.route.0_crowdsec`: Initializes the IP blocker as the first step.
 * `caddy.route.1_appsec`: Initializes the WAF as the second step.
 * `caddy.route.2_reverse_proxy`: Sends the traffic to the container application.
 
-### Step 5: Verify
+### Step 6: Verify
 
 1. **Start the stack:**
+
 ```bash
 docker compose up -d
 ```
 
+2. **Generate Traffic:**
 
-2. **Check Caddy Logs:**
-Ensure Caddy connected to the Docker socket and generated the config.
+Visit your site to generate some logs in the browser or in CLI:
+
 ```bash
-docker logs caddy
+curl -I https://whoami.example.com
 ```
 
-
 3. **Check CrowdSec Metrics:**
-Verify that AppSec is receiving data.
+
+Verify that CrowdSec is reading the logs and AppSec is receiving data.
+
 ```bash
 docker exec crowdsec cscli metrics
 ```
 
-
-You should see an "Appsec Metrics" table.
+* Look for **Acquisition Metrics**: Should show `file:/var/log/caddy/access.log` with "Lines read" > 0.
+* Look for **Parser Metrics**: Should show `crowdsecurity/caddy-logs`.
 
 ## Included Utilities
 
