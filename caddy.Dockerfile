@@ -1,56 +1,45 @@
-# Stage 1: Build custom Caddy with CrowdSec and Docker Proxy
+# 1. GLOBAL ARGS
 ARG GO_VERSION=1.25
-FROM golang:${GO_VERSION}-alpine AS builder
+ARG CADDY_VERSION=2
 
-# Arguments for version locking (passed from GH Actions)
+# --- Stage 1: Builder ---
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
+
+# 2. REDECLARE ARGS FOR BUILDER
+ARG CADDY_VERSION
 ARG BOUNCER_VERSION
 ARG PROXY_VERSION
+ARG TARGETARCH
+ARG TARGETOS
 
-RUN apk add --no-cache git
+# Install git and xcaddy
+RUN apk add --no-cache git && \
+    go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 
 WORKDIR /app
 
-# Create main.go with all plugins
-RUN tee main.go <<EOF
-package main
+# 3. Build with Cross-Compilation Support
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} xcaddy build v${CADDY_VERSION} \
+    --output /usr/bin/caddy \
+    --with github.com/lucaslorentz/caddy-docker-proxy/v2@v${PROXY_VERSION} \
+    --with github.com/hslatman/caddy-crowdsec-bouncer/appsec@v${BOUNCER_VERSION} \
+    --with github.com/hslatman/caddy-crowdsec-bouncer/http@v${BOUNCER_VERSION} \
+    --with github.com/hslatman/caddy-crowdsec-bouncer/layer4@v${BOUNCER_VERSION}
 
-import (
-	caddycmd "github.com/caddyserver/caddy/v2/cmd"
+# --- Stage 2: Final Image ---
+FROM caddy:${CADDY_VERSION}-alpine
 
-	_ "github.com/caddyserver/caddy/v2/modules/standard"
-	_ "github.com/hslatman/caddy-crowdsec-bouncer/appsec"
-	_ "github.com/hslatman/caddy-crowdsec-bouncer/http"
-	_ "github.com/hslatman/caddy-crowdsec-bouncer/layer4"
-	_ "github.com/lucaslorentz/caddy-docker-proxy/v2"
-)
+# Install dependencies (Process supervision, timezones, etc)
+RUN apk add --no-cache ca-certificates tzdata mailcap
 
-func main() {
-	caddycmd.Main()
-}
-EOF
-
-# Initialize module and fetch specific versions
-RUN go mod init custom-caddy
-
-RUN go get github.com/hslatman/caddy-crowdsec-bouncer/http@v${BOUNCER_VERSION} \
-           github.com/hslatman/caddy-crowdsec-bouncer/appsec@v${BOUNCER_VERSION} \
-           github.com/hslatman/caddy-crowdsec-bouncer/layer4@v${BOUNCER_VERSION} \
-           github.com/lucaslorentz/caddy-docker-proxy/v2@v${PROXY_VERSION} \
-    && go mod tidy
-
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -o /usr/bin/caddy \
-    -ldflags "-w -s" .
-
-# Stage 2: Final Image
-FROM caddy:latest
-
+# Copy binary from builder
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
 # REQUIRED: Overwrite CMD to start in docker-proxy mode
 CMD ["caddy", "docker-proxy"]
 
+# Metadata
 LABEL org.opencontainers.image.title="csdp-caddy" \
       org.opencontainers.image.description="Caddy with CrowdSec Bouncer and Docker Proxy" \
-      org.opencontainers.image.source="https://github.com/buildplan/csdp-caddy"
+      org.opencontainers.image.source="https://github.com/buildplan/csdp-caddy" \
+      org.opencontainers.image.version="${CADDY_VERSION}-P${PROXY_VERSION}-B${BOUNCER_VERSION}"
