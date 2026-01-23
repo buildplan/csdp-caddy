@@ -198,6 +198,8 @@ docker exec caddy caddy crowdsec health
 
 ---
 
+## CLI Options
+
 > Options below are taken from [https://github.com/hslatman/caddy-crowdsec-bouncer](https://github.com/hslatman/caddy-crowdsec-bouncer)
 
 ```text
