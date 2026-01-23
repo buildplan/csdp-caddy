@@ -94,11 +94,11 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}
-            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}-proxy-${{ env.PROXY_VERSION }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}-proxy-${{ env.PROXY_VERSION }}-bouncer-${{ env.BOUNCER_VERSION }}
           labels: |
             org.opencontainers.image.title=CSDP-Caddy
             org.opencontainers.image.description=Caddy + CrowdSec + Docker Proxy
-            org.opencontainers.image.version=${{ env.CADDY_VERSION }}-B${{ env.BOUNCER_VERSION }}-P${{ env.PROXY_VERSION }}
+            org.opencontainers.image.version=${{ env.CADDY_VERSION }}-P${{ env.PROXY_VERSION }}-B${{ env.BOUNCER_VERSION }}
 
       # --- Release ---
       - name: Create GitHub Release
@@ -114,6 +114,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # --- Cleanup ---
       - name: Clean up old GHCR images
         uses: quartx-analytics/ghcr-cleaner@v1
         with:
@@ -122,5 +123,6 @@ jobs:
           repository-owner: ${{ github.repository_owner }}
           repository-name: ${{ env.IMAGE_NAME }}
           delete-untagged: true
-          keep-at-most: 5
+          keep-at-most: 15
+          skip-tags: "*-proxy-*-bouncer-*"
 
