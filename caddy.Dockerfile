@@ -29,7 +29,11 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} xcaddy build v${CADDY_VERSION} \
 # --- Stage 2: Final Image ---
 FROM caddy:${CADDY_VERSION}-alpine
 
-# Install dependencies (Process supervision, timezones, etc)
+ARG CADDY_VERSION
+ARG BOUNCER_VERSION
+ARG PROXY_VERSION
+
+# Install dependencies
 RUN apk add --no-cache ca-certificates tzdata mailcap
 
 # Copy binary from builder
