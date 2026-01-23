@@ -245,6 +245,14 @@ docker exec caddy caddy crowdsec health
 
 ## CLI Options
 
+You could see the Caddyfile which docker-proxy plugin generates in-memory with:
+
+```bash
+docker logs caddy 2>&1 | grep "New Caddyfile" | tail -n 1 | sed 's/.*"caddyfile":"//' | sed 's/"}$//' | sed 's/\\n/\n/g' | sed 's/\\t/\t/g'
+```
+
+---
+
 > Options below are taken from [https://github.com/hslatman/caddy-crowdsec-bouncer](https://github.com/hslatman/caddy-crowdsec-bouncer)
 
 ```text
