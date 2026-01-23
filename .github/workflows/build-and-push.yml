@@ -88,11 +88,13 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             GO_VERSION=${{ env.GO_VERSION }}
+            CADDY_VERSION=${{ env.CADDY_VERSION }}
             BOUNCER_VERSION=${{ env.BOUNCER_VERSION }}
             PROXY_VERSION=${{ env.PROXY_VERSION }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}-proxy-${{ env.PROXY_VERSION }}
           labels: |
             org.opencontainers.image.title=CSDP-Caddy
             org.opencontainers.image.description=Caddy + CrowdSec + Docker Proxy
@@ -112,13 +114,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-#      - name: Clean up old GHCR images
-#        uses: quartx-analytics/ghcr-cleaner@v1
-#        with:
-#          owner-type: user
-#          token: ${{ secrets.PAT_TOKEN }}
-#          repository-owner: ${{ github.repository_owner }}
-#          repository-name: ${{ env.IMAGE_NAME }}
-#          delete-untagged: true
-#          keep-at-most: 5
+      - name: Clean up old GHCR images
+        uses: quartx-analytics/ghcr-cleaner@v1
+        with:
+          owner-type: user
+          token: ${{ secrets.PAT_TOKEN }}
+          repository-owner: ${{ github.repository_owner }}
+          repository-name: ${{ env.IMAGE_NAME }}
+          delete-untagged: true
+          keep-at-most: 5
 
