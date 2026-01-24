@@ -14,7 +14,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get latest bouncer release tag
         id: get_tag
@@ -24,7 +24,7 @@ jobs:
 
       - name: Check if release tag is new by using it as a cache key
         id: check
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .cache
           key: bouncer-release-${{ steps.get_tag.outputs.LATEST_TAG }}
@@ -37,7 +37,7 @@ jobs:
 
       - name: Trigger build workflow if new release found
         if: steps.check.outputs.cache-hit != 'true'
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           event-type: bouncer-release
