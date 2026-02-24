@@ -53,13 +53,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --- Determine Go Version ---
-      - name: Fetch Required Go Version from Caddy
+      - name: Fetch Required Go Version
+        id: go_version
         run: |
           GO_VERSION_URL="https://raw.githubusercontent.com/caddyserver/caddy/${{ env.CADDY_TAG }}/go.mod"
-          DYNAMIC_GO_VERSION=$(curl -sL --fail "${GO_VERSION_URL}" | grep -E "^go [0-9]+\.[0-9]+" | awk '{print $2}' || true)
-
+          DYNAMIC_GO_VERSION=$(curl -sL --fail "${GO_VERSION_URL}" | grep -oP "^go \K[0-9]+\.[0-9]+" || true)
           if [[ -n "${DYNAMIC_GO_VERSION}" ]]; then
             echo "GO_VERSION=${DYNAMIC_GO_VERSION}" >> $GITHUB_ENV
+            echo "Using Go floating tag: ${DYNAMIC_GO_VERSION}"
           else
             echo "GO_VERSION=${{ env.DEFAULT_GO_VERSION }}" >> $GITHUB_ENV
           fi
