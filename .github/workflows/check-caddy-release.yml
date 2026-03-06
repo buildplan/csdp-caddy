@@ -16,27 +16,35 @@ jobs:
 
       - name: Get latest Caddy release tag
         id: get_tag
-        run: |
-          LATEST_TAG=$(gh api /repos/caddyserver/caddy/releases/latest --jq .tag_name)
-          echo "LATEST_TAG=${LATEST_TAG}" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check if release tag is new by using it as a cache key
-        id: check
-        uses: actions/cache@v5
-        with:
-          path: .cache
-          key: caddy-release-${{ steps.get_tag.outputs.LATEST_TAG }}
-
-      - name: Create cache marker if new release
-        if: steps.check.outputs.cache-hit != 'true'
         run: |
-          mkdir -p .cache
-          echo "${{ steps.get_tag.outputs.LATEST_TAG }}" > .cache/caddy-tag
+          # Get Upstream Caddy Version from GitHub
+          UPSTREAM_TAG=$(gh api /repos/caddyserver/caddy/releases/latest --jq .tag_name)
+          CADDY_VERSION=$(echo "${UPSTREAM_TAG}" | sed 's/^v//')
+          echo "Upstream GitHub is: $UPSTREAM_TAG"
 
-      - name: Trigger build workflow if new release found
-        if: steps.check.outputs.cache-hit != 'true'
+          # Check if the image actually exists on Docker Hub
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/library/caddy/tags/${CADDY_VERSION}-alpine")
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "⚠️ Release ${UPSTREAM_TAG} found on GitHub, but not yet published to Docker Hub. Skipping until tomorrow."
+            echo "trigger=false" >> $GITHUB_OUTPUT
+            exit 0 # This cleanly ends the step, and the 'if' condition below catches the false trigger
+          fi
+
+          # Check if we have already built this version
+          # We use a regex anchor (^) to ensure we match the start of the tag correctly
+          if gh release list --json tagName --jq '.[].tagName' | grep -q "^${UPSTREAM_TAG}-"; then
+            echo "✅ Release for ${UPSTREAM_TAG} already exists in this repo. Skipping."
+            echo "trigger=false" >> $GITHUB_OUTPUT
+          else
+            echo "🚀 New upstream release ${UPSTREAM_TAG} found and verified on Docker Hub! Triggering build."
+            echo "trigger=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Trigger build workflow
+        if: steps.get_tag.outputs.trigger == 'true'
         uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
