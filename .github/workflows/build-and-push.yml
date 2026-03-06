@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: csdp-caddy
-      DEFAULT_GO_VERSION: 1.25
+      DEFAULT_GO_VERSION: 1.26
 
     steps:
       - name: Checkout repository
@@ -29,10 +29,29 @@ jobs:
       # --- Fetch Versions ---
       - name: Fetch Latest Caddy Version
         run: |
-          CADDY_TAG=$(gh api /repos/caddyserver/caddy/releases/latest --jq .tag_name)
-          CADDY_VERSION=$(echo "${CADDY_TAG}" | sed 's/^v//')
-          echo "CADDY_TAG=${CADDY_TAG}" >> $GITHUB_ENV
-          echo "CADDY_VERSION=${CADDY_VERSION}" >> $GITHUB_ENV
+          RECENT_TAGS=$(gh api /repos/caddyserver/caddy/releases --jq '.[0:5] | .[].tag_name')
+          FOUND_TAG=""
+          FOUND_VERSION=""
+          echo "Looking for the newest Caddy release that is actually published on Docker Hub..."
+          for TAG in $RECENT_TAGS; do
+            VERSION=$(echo "${TAG}" | sed 's/^v//')
+            echo "Checking Caddy ${VERSION}..."
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://hub.docker.com/v2/repositories/library/caddy/tags/${VERSION}-alpine")
+            if [ "$HTTP_STATUS" == "200" ]; then
+              echo "Success! Caddy ${VERSION} is available on Docker Hub."
+              FOUND_TAG=$TAG
+              FOUND_VERSION=$VERSION
+              break # Stop the loop, we found our version!
+            else
+              echo "⚠️ Caddy ${VERSION} is not on Docker Hub yet. Falling back to the previous release..."
+            fi
+          done
+          if [ -z "$FOUND_VERSION" ]; then
+            echo "❌ ERROR: Could not find ANY of the 5 most recent Caddy releases on Docker Hub."
+            exit 1
+          fi
+          echo "CADDY_TAG=${FOUND_TAG}" >> $GITHUB_ENV
+          echo "CADDY_VERSION=${FOUND_VERSION}" >> $GITHUB_ENV
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
