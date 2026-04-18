@@ -2,30 +2,26 @@ name: 🧘 Keep Workflows Active
 
 on:
   schedule:
-    # Run on the 1st day of every month at 4:05 AM
-    - cron: '5 4 1 * *'
-  
-  # Allow manual runs from the GitHub UI for testing
+    # Run on the 1st day of every month at 3:05 AM
+    - cron: '5 3 1 * *'
   workflow_dispatch:
 
 jobs:
   update-timestamp:
     runs-on: ubuntu-latest
     
-    # write permissions to push a commit to the repo
     permissions:
       contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Update activity timestamp
         run: |
-          # Create a specific, non-intrusive directory for this file
           mkdir -p .github/activity
-          # Write the current ISO 8601 date to the file
-          # This ensures the file content actually changes, triggering the commit
           echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" > .github/activity/timestamp
 
       - name: Commit and push changes
@@ -33,9 +29,9 @@ jobs:
         with:
           commit_message: "chore(activity): Update timestamp to keep workflows active"
           file_pattern: ".github/activity/timestamp"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "github-actions[bot]@users.noreply.github.com"
-          commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          branch: repo-keepalive 
+          commit_user_name: "buildplan"
+          commit_user_email: "hello@buildplan.org"
+          commit_author: "buildplan <hello@buildplan.org>"
+          branch: repo-keepalive
           create_branch: true
           push_options: '--force'
