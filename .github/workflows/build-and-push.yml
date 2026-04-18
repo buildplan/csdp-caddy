@@ -122,7 +122,7 @@ jobs:
 
       # --- Release ---
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.CADDY_VERSION }}-P${{ env.PROXY_VERSION }}
           name: "Caddy v${{ env.CADDY_VERSION }} (Proxy v${{ env.PROXY_VERSION }})"
