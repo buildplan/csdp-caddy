@@ -24,14 +24,23 @@ jobs:
           mkdir -p .github/activity
           echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" > .github/activity/timestamp
 
-      - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v7
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v8
         with:
-          commit_message: "chore(activity): Update timestamp to keep workflows active"
-          file_pattern: ".github/activity/timestamp"
-          commit_user_name: "buildplan"
-          commit_user_email: "hello@buildplan.org"
-          commit_author: "buildplan <hello@buildplan.org>"
+          token: ${{ secrets.PAT_TOKEN }}
+          commit-message: "chore(activity): Update timestamp to keep workflows active"
           branch: repo-keepalive
-          create_branch: true
-          push_options: '--force'
+          delete-branch: true
+          title: "chore(activity): Keep workflows active"
+          body: "Automated PR to update the activity timestamp and keep workflows active."
+          author: "buildplan <hello@buildplan.org>"
+          committer: "buildplan <hello@buildplan.org>"
+
+      - name: Merge Pull Request
+        if: ${{ steps.cpr.outputs.pull-request-number }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --admin --squash --delete-branch || \
+          gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --auto --squash --delete-branch
