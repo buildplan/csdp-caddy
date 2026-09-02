@@ -26,7 +26,7 @@ jobs:
 
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.PAT_TOKEN }}
           commit-message: "chore(activity): Update timestamp to keep workflows active"
@@ -38,7 +38,7 @@ jobs:
           committer: "buildplan <hello@buildplan.org>"
 
       - name: Merge Pull Request
-        if: steps.cpr.outputs.pull-request-operation == 'created'
+        if: ${{ steps.cpr.outputs.pull-request-number }}
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
